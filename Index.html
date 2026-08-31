@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurador de sectores acústicos</title>
+<style>
+  :root{
+    --navy:#16233B; --navy2:#1E2F4D; --steel:#3E6D9C; --steel-lt:#CFE0EF;
+    --amber:#F2A93B; --amber-dark:#C97B12; --amber-lt:#FCD98B;
+    --off:#F6F8FA; --grey:#5B6577; --white:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:Calibri,"Segoe UI",Arial,sans-serif; background:var(--off); color:var(--navy);
+  }
+  header{
+    background:var(--navy); color:var(--white); padding:28px 40px 24px;
+  }
+  header .eyebrow{ color:var(--amber); font-size:12.5px; font-weight:700; letter-spacing:2px; }
+  header h1{ font-family:Cambria,Georgia,serif; font-size:26px; margin:6px 0 4px; }
+  header p{ margin:0; color:var(--steel-lt); font-size:14px; max-width:680px; line-height:1.5;}
+
+  .wrap{ display:flex; gap:28px; padding:28px 40px 40px; align-items:flex-start; flex-wrap:wrap; }
+
+  .panel{
+    background:var(--white); border-radius:10px; padding:20px 22px;
+    box-shadow:0 2px 10px rgba(20,30,50,0.08);
+  }
+  .table-panel{ flex:1 1 460px; min-width:420px; }
+  .diagram-panel{ flex:1 1 460px; min-width:420px; text-align:center; }
+
+  h2{ font-size:15px; margin:0 0 4px; }
+  .sub{ color:var(--grey); font-size:12.5px; margin:0 0 16px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th{ text-align:left; color:var(--grey); font-weight:600; font-size:11.5px; letter-spacing:.4px;
+      padding:6px 8px; border-bottom:2px solid var(--off); }
+  td{ padding:6px 8px; border-bottom:1px solid var(--off); }
+  tr.row0 td.swatch div{ background:var(--amber-dark); }
+  tr.row1 td.swatch div{ background:var(--amber); }
+  tr.row2 td.swatch div{ background:var(--amber-lt); }
+  td.swatch div{ width:14px; height:14px; border-radius:3px; }
+
+  input[type=number]{
+    width:72px; padding:6px 7px; border:1px solid #D7DEE7; border-radius:6px; font-size:13.5px;
+    font-family:inherit; color:var(--navy);
+  }
+  input[type=number]:focus{ outline:2px solid var(--steel); outline-offset:1px; }
+
+  .toggle{ display:flex; gap:8px; margin-bottom:16px; }
+  .toggle button{
+    flex:1; padding:9px 10px; border-radius:7px; border:1px solid #D7DEE7; background:var(--white);
+    font-size:13px; font-weight:600; color:var(--grey); cursor:pointer;
+  }
+  .toggle button.active{ background:var(--navy); color:var(--white); border-color:var(--navy); }
+
+  .warn{
+    margin-top:14px; padding:10px 12px; border-radius:7px; font-size:12.5px; line-height:1.5;
+    display:none;
+  }
+  .warn.show{ display:block; }
+  .warn.overlap{ background:#FCEAEA; color:#9A2A2A; border:1px solid #F1C4C4; }
+  .warn.ok{ background:#EAF5EE; color:#2A6B3E; border:1px solid #C7E6D0; }
+
+  svg{ max-width:100%; height:auto; }
+  .caption{ color:var(--grey); font-size:12px; margin-top:10px; line-height:1.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">SECTORIZACIÓN ACÚSTICA</div>
+  <h1>Configurador de ángulos de sectores</h1>
+  <p>Defina el ángulo central, el número de sectores y la potencia acústica de cada uno. El diagrama de planta gira en tiempo real según los valores de la tabla.</p>
+</header>
+
+<div class="wrap">
+
+  <div class="panel table-panel">
+    <h2>Tabla de configuración</h2>
+    <p class="sub">Ancho fijo de 70° por sector · SPL de referencia @ 30,5 m (100 ft)</p>
+
+    <div class="toggle">
+      <button id="btn2" onclick="setCount(2)">2 sectores</button>
+      <button id="btn3" onclick="setCount(3)">3 sectores</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th></th><th>Sector</th><th>Ángulo central (°)</th><th>SPL (dB)</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <div id="warnBox" class="warn"></div>
+  </div>
+
+  <div class="panel diagram-panel">
+    <h2 style="text-align:left;">Vista en planta</h2>
+    <p class="sub" style="text-align:left;">Poste de sirena — orientación de sectores en 360°</p>
+    <svg id="svg" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg"></svg>
+    <p class="caption">El norte (0°) apunta hacia arriba; los ángulos aumentan en sentido horario.</p>
+  </div>
+
+</div>
+
+<script>
+const NAVY = "#16233B", STEEL = "#3E6D9C", WHITE = "#FFFFFF", GRID = "#C7CFDA";
+const COLORS = ["#C97B12", "#F2A93B", "#FCD98B"];
+const CX = 300, CY = 300, R = 230;
+const SECTOR_WIDTH = 70;
+
+let sectors = [
+  { angle: 59,  spl: 124 },
+  { angle: 135, spl: 120 },
+  { angle: 280, spl: 116 },
+];
+
+function setCount(n){
+  if (n === 2) sectors = sectors.slice(0, 2);
+  else if (sectors.length === 2) sectors.push({ angle: 280, spl: 116 });
+  document.getElementById('btn2').classList.toggle('active', n === 2);
+  document.getElementById('btn3').classList.toggle('active', n === 3);
+  renderTable();
+  renderDiagram();
+}
+
+function renderTable(){
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  sectors.forEach((s, i) => {
+    const tr = document.createElement('tr');
+    tr.className = 'row' + i;
+    tr.innerHTML = `
+      <td class="swatch"><div></div></td>
+      <td>Sector ${i+1}</td>
+      <td><input type="number" min="0" max="359" value="${s.angle}" data-i="${i}" data-f="angle"></td>
+      <td><input type="number" min="116" max="124" value="${s.spl}" data-i="${i}" data-f="spl"></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', onInput);
+  });
+}
+
+function onInput(e){
+  const i = +e.target.dataset.i, f = e.target.dataset.f;
+  let v = +e.target.value;
+  if (f === 'angle') v = ((v % 360) + 360) % 360;
+  if (f === 'spl') v = Math.max(116, Math.min(124, v));
+  sectors[i][f] = v;
+  renderDiagram();
+}
+
+function azToMath(az){ return (90 - az) * Math.PI / 180; }
+function pt(az, r){ const m = azToMath(az); return [CX + r*Math.cos(m), CY - r*Math.sin(m)]; }
+
+function wedgePath(centerAz, width, r){
+  const a1 = centerAz - width/2, a2 = centerAz + width/2;
+  const [x1,y1] = pt(a1, r), [x2,y2] = pt(a2, r);
+  const large = width > 180 ? 1 : 0;
+  return `M ${CX} ${CY} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+}
+
+function checkOverlap(){
+  const spans = sectors.map(s => [ (s.angle - 35 + 360) % 360, (s.angle + 35) % 360, s.angle ]);
+  for (let i = 0; i < spans.length; i++){
+    for (let j = i+1; j < spans.length; j++){
+      const d = Math.abs(spans[i][2] - spans[j][2]);
+      const diff = Math.min(d, 360-d);
+      if (diff < SECTOR_WIDTH) return true;
+    }
+  }
+  return false;
+}
+
+function renderDiagram(){
+  const svg = document.getElementById('svg');
+  let s = '';
+
+  // rings
+  [0.4, 0.7, 1.0].forEach((f, idx) => {
+    const rr = R*f;
+    s += `<circle cx="${CX}" cy="${CY}" r="${rr}" fill="none" stroke="${GRID}" stroke-width="1" stroke-dasharray="3,4"/>`;
+  });
+  s += `<text x="${CX+8}" y="${CY-R*0.4-6}" font-size="11" fill="#6B7686">30 m</text>`;
+  s += `<text x="${CX+8}" y="${CY-R*0.7-6}" font-size="11" fill="#6B7686">65 m</text>`;
+  s += `<text x="${CX+8}" y="${CY-R*1.0-6}" font-size="11" fill="#6B7686">100 m (SPL ref.)</text>`;
+
+  // compass
+  for (let az = 0; az < 360; az += 30){
+    const [x1,y1] = pt(az, R+8), [x2,y2] = pt(az, R+22);
+    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${NAVY}" stroke-width="2" stroke-linecap="round"/>`;
+    if (az % 90 === 0){
+      const [xt,yt] = pt(az, R+48);
+      const label = az === 0 ? 'N (0°)' : az + '°';
+      s += `<text x="${xt}" y="${yt+4}" font-size="15" font-weight="700" fill="${NAVY}" text-anchor="middle">${label}</text>`;
+    }
+  }
+
+  // sectors
+  sectors.forEach((sec, i) => {
+    s += `<path d="${wedgePath(sec.angle, SECTOR_WIDTH, R)}" fill="${COLORS[i]}" stroke="${NAVY}" stroke-width="2.4" opacity="0.94"/>`;
+    const [lx, ly] = pt(sec.angle, R*0.62);
+    s += `<text x="${lx}" y="${ly-6}" font-size="16" font-weight="700" fill="${NAVY}" text-anchor="middle">Sector ${i+1}</text>`;
+    s += `<text x="${lx}" y="${ly+16}" font-size="14" font-weight="700" fill="${NAVY}" text-anchor="middle">${sec.spl} dB</text>`;
+
+    // central angle indicator
+    const [ex, ey] = pt(sec.angle, R+70);
+    const [dx, dy] = pt(sec.angle, R+6);
+    s += `<line x1="${dx}" y1="${dy}" x2="${ex}" y2="${ey}" stroke="${NAVY}" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.65"/>`;
+    s += `<circle cx="${dx}" cy="${dy}" r="3.5" fill="${NAVY}"/>`;
+    s += `<rect x="${ex-24}" y="${ey-14}" width="48" height="24" rx="5" fill="${WHITE}" stroke="${NAVY}" stroke-width="1.2"/>`;
+    s += `<text x="${ex}" y="${ey+5}" font-size="14" font-weight="700" fill="${NAVY}" text-anchor="middle">${sec.angle}°</text>`;
+  });
+
+  // pole
+  s += `<circle cx="${CX}" cy="${CY}" r="11" fill="${NAVY}" stroke="${WHITE}" stroke-width="2.5"/>`;
+
+  svg.innerHTML = s;
+
+  const warnBox = document.getElementById('warnBox');
+  if (checkOverlap()){
+    warnBox.className = 'warn show overlap';
+    warnBox.textContent = 'Los sectores se superponen: ajuste los ángulos para que cada sector mantenga una separación mínima de 70° respecto a los demás centros.';
+  } else {
+    warnBox.className = 'warn show ok';
+    warnBox.textContent = 'Sin superposición — cada sector cubre su arco de 70° de forma independiente.';
+  }
+}
+
+setCount(3);
+renderTable();
+renderDiagram();
+</script>
+
+</body>
+</html>
